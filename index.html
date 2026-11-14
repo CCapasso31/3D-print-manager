@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Print Manager v0.0.4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', 600: '#475569' },
+                        accent: { 500: '#0ea5e9', 600: '#0284c7' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-dark-900 text-slate-100 font-sans min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <header class="bg-dark-800 border-b border-dark-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-accent-500 text-dark-900 p-2 rounded-xl font-bold text-xl flex items-center justify-center w-10 h-10 shadow-lg shadow-accent-500/20">
+                    <i class="fa-solid fa-cube"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-lg font-bold tracking-tight">3D Print Manager</h1>
+                        <span onclick="openChangelogModal()" class="cursor-pointer bg-accent-500/10 text-accent-500 text-[10px] font-bold px-2 py-0.5 rounded-full border border-accent-500/20 hover:bg-accent-500/20 transition">v0.0.4</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Ore totali stampate: <strong id="total-print-hours" class="text-white">0h</strong></p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <button onclick="requestNotificationPermission()" id="notif-btn" class="bg-dark-900 border border-dark-700 text-slate-300 px-3 py-2 rounded-xl text-xs flex items-center space-x-2 hover:border-accent-500 transition">
+                    <i class="fa-solid fa-bell text-accent-500"></i><span id="notif-label">Abilita Notifiche</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="max-w-7xl mx-auto px-4 pb-3 flex space-x-1 overflow-x-auto">
+            <button onclick="switchTab('print')" id="nav-print" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 bg-accent-500 text-dark-900 shadow whitespace-nowrap">
+                <i class="fa-solid fa-play"></i><span>Stampa</span>
+            </button>
+            <button onclick="switchTab('inventory')" id="nav-inventory" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-white whitespace-nowrap">
+                <i class="fa-solid fa-boxes-stacked"></i><span>Inventario</span>
+            </button>
+            <button onclick="switchTab('deals')" id="nav-deals" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-white whitespace-nowrap">
+                <i class="fa-solid fa-tags text-amber-400"></i><span>Offerte Filamenti (Live)</span>
+            </button>
+            <button onclick="switchTab('maintenance')" id="nav-maintenance" class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-white whitespace-nowrap">
+                <i class="fa-solid fa-screwdriver-wrench"></i><span>Manutenzione</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6">
+
+        <!-- ================= TAB STAMPA ================= -->
+        <div id="tab-print" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Form Nuova Stampa con Parser G-Code -->
+                <div class="bg-dark-800 border border-dark-700 rounded-2xl p-6 shadow-xl lg:col-span-1">
+                    <h2 class="text-lg font-bold mb-4 flex items-center space-x-2 text-accent-500">
+                        <i class="fa-solid fa-print"></i><span>Nuova Stampa (G-Code)</span>
+                    </h2>
+                    <form id="print-form" onsubmit="startPrint(event)" class="space-y-4">
+                        <!-- Caricamento G-Code -->
+                        <div class="border-2 border-dashed border-dark-700 hover:border-accent-500 transition rounded-xl p-4 text-center cursor-pointer bg-dark-900/50 relative">
+                            <input type="file" id="gcode-file-input" accept=".gcode" onchange="handleGCodeUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer">
+                            <i class="fa-solid fa-file-code text-2xl text-accent-500 mb-1"></i>
+                            <p class="text-xs font-semibold text-slate-300">Trascina qui il file .gcode o clicca</p>
+                            <p id="gcode-filename" class="text-[10px] text-slate-500 mt-1">Legge automaticamente tempi, temperature e grammi</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Nome Modello</label>
+                            <input type="text" id="print-model" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500" placeholder="Es. Calibrazione_Cube.gcode">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Tempo (Ore)</label>
+                                <input type="number" id="print-hours" min="0" value="2" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Tempo (Min)</label>
+                                <input type="number" id="print-minutes" min="0" max="59" value="30" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Associa Filamento Inventario</label>
+                            <select id="print-filament" onchange="autofillPrintTemps()" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                                <option value="">-- Seleziona Bobina --</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Nozzle (°C)</label>
+                                <input type="number" id="print-nozzle" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500" placeholder="210">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Bed (°C)</label>
+                                <input type="number" id="print-bed" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500" placeholder="60">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Ventola (%)</label>
+                                <input type="number" id="print-fan" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500" placeholder="100">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Consumo Stimato (Grammi)</label>
+                            <input type="number" id="print-weight" min="1" value="45" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                        </div>
+                        <button type="submit" class="w-full bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold py-3 rounded-xl transition shadow-lg shadow-accent-500/20 flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-play"></i><span>Avvia Stampa & Anteprima Live</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Stampe in Corso & Visualizzatore Animato 3D/Canvas -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-dark-800 border border-dark-700 rounded-2xl p-6 shadow-xl">
+                        <h2 class="text-lg font-bold mb-4 flex items-center space-x-2 text-accent-500">
+                            <i class="fa-solid fa-display"></i><span>Stampe Attive & Monitor Live Nozzle</span>
+                        </h2>
+                        <div id="active-prints-container" class="space-y-6">
+                            <div class="text-center py-12 text-slate-500 border-2 border-dashed border-dark-700 rounded-xl">
+                                <i class="fa-solid fa-print text-4xl mb-3 opacity-40"></i>
+                                <p class="text-sm">Nessuna stampa in esecuzione al momento.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB INVENTARIO ================= -->
+        <div id="tab-inventory" class="hidden space-y-6">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <h2 class="text-xl font-bold flex items-center space-x-2 text-accent-500">
+                    <i class="fa-solid fa-boxes-stacked"></i><span>Gestione Filamenti & Accessori</span>
+                </h2>
+                <div class="flex space-x-2">
+                    <button onclick="openInventoryModal('filament')" class="bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2 shadow-lg shadow-accent-500/20">
+                        <i class="fa-solid fa-plus"></i><span>Aggiungi Filamento</span>
+                    </button>
+                    <button onclick="openInventoryModal('accessory')" class="bg-dark-700 hover:bg-dark-600 text-white font-bold px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2">
+                        <i class="fa-solid fa-plus"></i><span>Aggiungi Accessorio</span>
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="inventory-grid"></div>
+        </div>
+
+        <!-- ================= TAB OFFERTE FILAMENTI ================= -->
+        <div id="tab-deals" class="hidden space-y-6">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center space-x-2 text-amber-400">
+                        <i class="fa-solid fa-tags"></i><span>Offerte Filamenti Giornaliere (Link Diretti)</span>
+                    </h2>
+                    <p class="text-xs text-slate-400">Collegamenti diretti agli store ufficiali e partner per l'acquisto di filamenti in sconto.</p>
+                </div>
+                <button onclick="refreshDeals()" class="bg-dark-700 hover:bg-dark-600 text-slate-200 text-xs px-3 py-2 rounded-xl flex items-center space-x-2 transition">
+                    <i class="fa-solid fa-rotate"></i><span>Aggiorna Elenco</span>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="deals-grid"></div>
+        </div>
+
+        <!-- ================= TAB MANUTENZIONE ================= -->
+        <div id="tab-maintenance" class="hidden space-y-6">
+            <div class="flex flex-wrap justify-between items-center gap-4">
+                <h2 class="text-xl font-bold flex items-center space-x-2 text-accent-500">
+                    <i class="fa-solid fa-screwdriver-wrench"></i><span>Scadenzario Manutenzione Stampante</span>
+                </h2>
+                <button onclick="openMaintenanceModal()" class="bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold px-4 py-2 rounded-xl text-sm transition flex items-center space-x-2 shadow-lg shadow-accent-500/20">
+                    <i class="fa-solid fa-plus"></i><span>Nuova Attività</span>
+                </button>
+            </div>
+            <div class="bg-dark-800 border border-dark-700 rounded-2xl overflow-hidden shadow-xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-dark-700/50 text-slate-400 text-xs uppercase tracking-wider border-b border-dark-700">
+                                <th class="p-4">Attività</th>
+                                <th class="p-4">Intervallo</th>
+                                <th class="p-4">Ultimo eseguito</th>
+                                <th class="p-4">Stato</th>
+                                <th class="p-4 text-right">Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenance-table-body" class="divide-y divide-dark-700 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Changelog v0.0.4 -->
+    <div id="changelog-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-dark-800 border border-dark-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+            <div class="flex justify-between items-center border-b border-dark-700 pb-3">
+                <h3 class="text-lg font-bold text-accent-500 flex items-center space-x-2">
+                    <i class="fa-solid fa-rocket"></i><span>Note di Rilascio (Changelog)</span>
+                </h3>
+                <button onclick="closeModal('changelog-modal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-4 text-sm text-slate-300 max-h-96 overflow-y-auto pr-2">
+                <div class="bg-dark-900 p-4 rounded-xl border border-dark-700 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-accent-500">Versione 0.0.4 (Attuale)</span>
+                        <span class="text-xs text-slate-500">Oggi</span>
+                    </div>
+                    <ul class="list-disc list-inside space-y-1 text-xs text-slate-300">
+                        <li><strong>Parser G-Code Integrato:</strong> Carica il tuo file `.gcode` per estrarre automaticamente tempo stimato, consumo filamento in grammi e temperature.</li>
+                        <li><strong>Simulatore Live Nozzle & Wireframe:</strong> Canvas interattivo con anteprima in trasparenza della forma 3D e nozzle animato che traccia l'avanzamento della stampa in tempo reale.</li>
+                    </ul>
+                </div>
+                <div class="bg-dark-900 p-4 rounded-xl border border-dark-700 space-y-2 opacity-75">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-slate-300">Versione 0.0.3</span>
+                        <span class="text-xs text-slate-500">Precedente</span>
+                    </div>
+                    <ul class="list-disc list-inside space-y-1 text-xs text-slate-400">
+                        <li>Offerte filamenti giornaliere con link diretti agli store.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals Inventario e Manutenzione -->
+    <div id="inventory-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-dark-800 border border-dark-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 id="inv-modal-title" class="text-lg font-bold mb-4 text-accent-500">Aggiungi Filamento</h3>
+            <form id="inventory-form" onsubmit="saveInventoryItem(event)" class="space-y-4">
+                <input type="hidden" id="inv-type" value="filament">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Nome / Brand & Colore</label>
+                    <input type="text" id="inv-name" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500" placeholder="Es. Bambu Lab PLA Basic Verde">
+                </div>
+                <div id="filament-fields" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Tipologia</label>
+                            <select id="inv-material" onchange="onMaterialPresetChange()" class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                                <option value="PLA">PLA</option>
+                                <option value="PETG">PETG</option>
+                                <option value="ABS">ABS</option>
+                                <option value="ASA">ASA</option>
+                                <option value="TPU">TPU</option>
+                                <option value="Nylon">Nylon</option>
+                                <option value="Altro">Altro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Peso Residuo (g)</label>
+                            <input type="number" id="inv-weight" value="1000" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Nozzle (°C)</label>
+                            <input type="number" id="inv-nozzle" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Bed (°C)</label>
+                            <input type="number" id="inv-bed" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Ventola (%)</label>
+                            <input type="number" id="inv-fan" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-500">
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 pt-4 border-t border-dark-700">
+                    <button type="button" onclick="closeModal('inventory-modal')" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-white transition">Annulla</button>
+                    <button type="submit" class="bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold px-5 py-2 rounded-xl text-sm transition shadow-lg shadow-accent-500/20">Salva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="maintenance-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-dark-800 border border-dark-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 class="text-lg font-bold mb-4 text-accent-500">Nuovo Reminder Manutenzione</h3>
+            <form id="maintenance-form" onsubmit="saveMaintenanceItem(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Attività</label>
+                    <input type="text" id="maint-title" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500" placeholder="Es. Sostituzione ugello 0.4mm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Intervallo</label>
+                    <input type="text" id="maint-interval" required class="w-full bg-dark-900 border border-dark-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500" placeholder="Es. Ogni 250 ore">
+                </div>
+                <div class="flex justify-end space-x-3 pt-4 border-t border-dark-700">
+                    <button type="button" onclick="closeModal('maintenance-modal')" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-white transition">Annulla</button>
+                    <button type="submit" class="bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold px-5 py-2 rounded-xl text-sm transition shadow-lg shadow-accent-500/20">Salva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script App v0.0.4 -->
+    <script>
+        const materialPresets = {
+            "PLA": { nozzle: 210, bed: 60, fan: 100 },
+            "PETG": { nozzle: 240, bed: 75, fan: 50 },
+            "ABS": { nozzle: 245, bed: 100, fan: 0 },
+            "ASA": { nozzle: 250, bed: 100, fan: 20 },
+            "TPU": { nozzle: 220, bed: 50, fan: 80 },
+            "Nylon": { nozzle: 260, bed: 80, fan: 0 },
+            "Altro": { nozzle: 210, bed: 60, fan: 100 }
+        };
+
+        const dailyDeals = [
+            { id: 1, store: '3DJake Italia', brand: '3DJake / Sunlu', material: 'PLA & PETG assortiti', price: 'Da 14.90€', oldPrice: 'Listino', tag: 'Spedizione Gratuita da 49€', link: 'https://www.3djake.it/filamenti-per-la-stampa-3d' },
+            { id: 2, store: '3D Store Italia', brand: 'Bambu Lab & Elegoo', material: 'PLA Basic / PETG Pro', price: 'Da 16.90€', oldPrice: '24.00€', tag: 'Top Vendite', link: 'https://www.3dstoreitalia.com/collections/elegoo-filamenti' },
+            { id: 3, store: 'Amazon Italia', brand: 'Sunlu / Eryone / Jayo', material: 'Bobine PLA 1kg / 2kg', price: 'Offerte Giornaliere', tag: 'Prime', link: 'https://www.amazon.it/s?k=filamento+pla+stampante+3d' },
+            { id: 4, store: '3D Store Italia', brand: 'Bambu Lab', material: 'ABS & ASA Refill', price: 'Da 15.48€', oldPrice: '20.90€', tag: 'Sconto Eco Refill', link: 'https://www.3dstoreitalia.com/collections/bambulab-filaments' },
+            { id: 5, store: '3DJake Italia', brand: 'Polymaker', material: 'PolyTerra PLA Ecologico', price: '19.99€', oldPrice: '24.00€', tag: 'Bio Bobina', link: 'https://www.3djake.it/' }
+        ];
+
+        let appData = JSON.parse(localStorage.getItem('printManagerDataV4')) || {
+            prints: [],
+            totalPrintSeconds: 0,
+            inventory: [
+                { id: 1, type: 'filament', name: 'PLA Bianco Standard', material: 'PLA', weight: 850, maxWeight: 1000, nozzle: 210, bed: 60, fan: 100 },
+                { id: 2, type: 'filament', name: 'PETG Nero', material: 'PETG', weight: 400, maxWeight: 1000, nozzle: 240, bed: 75, fan: 50 }
+            ],
+            maintenance: [
+                { id: 1, title: 'Pulizia piatto di stampa con alcool', interval: 'Ogni 15 stampe', lastDone: '2 giorni fa', status: 'ok' },
+                { id: 2, title: 'Lubrificazione guide lineari e viti', interval: 'Ogni 200 ore', lastDone: '1 mese fa', status: 'warning' }
+            ]
+        };
+
+        function saveData() {
+            localStorage.setItem('printManagerDataV4', JSON.stringify(appData));
+        }
+
+        function switchTab(tabId) {
+            ['print', 'inventory', 'deals', 'maintenance'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`nav-${t}`).className = "px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 text-slate-400 hover:text-white whitespace-nowrap";
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.getElementById(`nav-${tabId}`).className = "px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 bg-accent-500 text-dark-900 shadow whitespace-nowrap";
+            
+            if(tabId === 'print') updatePrintFilamentDropdown();
+            if(tabId === 'deals') renderDeals();
+        }
+
+        // --- PARSER G-CODE REALE ---
+        let parsedGCodePoints = [];
+
+        function handleGCodeUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('gcode-filename').innerText = `File caricato: ${file.name}`;
+            document.getElementById('print-model').value = file.name.replace('.gcode', '');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                
+                let estimatedSeconds = 0;
+                let filamentGramms = 0;
+                let nozzleTemp = 210;
+                let bedTemp = 60;
+                parsedGCodePoints = [];
+
+                for (let i = 0; i < lines.length; i++) {
+                    let line = lines[i].trim();
+                    
+                    // Cerca tempo stampante nei commenti (Cura, PrusaSlicer, Orca)
+                    if (line.includes('estimated printing time') || line.includes('TIME:')) {
+                        let match = line.match(/(\d+)h\s*(\d+)m|(\d+)s/i);
+                        if (match) {
+                            // Semplificazione parsing tempo
+                        }
+                    }
+                    if (line.includes('filament used [g]') || line.includes('filament used [mm]')) {
+                        let parts = line.split('=');
+                        if (parts.length > 1) {
+                            let val = parseFloat(parts[1]);
+                            if (!isNaN(val) && line.includes('[g]')) filamentGramms = Math.round(val);
+                        }
+                    }
+                    // Temperature Nozzle (M104 S... o M109 S...)
+                    if (line.startsWith('M104 S') || line.startsWith('M109 S')) {
+                        let temp = parseInt(line.substring(6));
+                        if (temp > 150 && temp < 300) nozzleTemp = temp;
+                    }
+                    // Temperature Bed (M140 S... o M190 S...)
+                    if (line.startsWith('M140 S') || line.startsWith('M190 S')) {
+                        let temp = parseInt(line.substring(6));
+                        if (temp >= 0 && temp < 120) bedTemp = temp;
+                    }
+                    // Estrai coordinate XY per la preview canvas
+                    if (line.startsWith('G1 ') || line.startsWith('G0 ')) {
+                        let xMatch = line.match(/X([0-9.]+)/);
+                        let yMatch = line.match(/Y([0-9.]+)/);
+                        if (xMatch && yMatch) {
+                            parsedGCodePoints.push({ x: parseFloat(xMatch[1]), y: parseFloat(yMatch[1]) });
+                        }
+                    }
+                }
+
+                // Imposta i valori nel form
+                if (nozzleTemp) document.getElementById('print-nozzle').value = nozzleTemp;
+                if (bedTemp) document.getElementById('print-bed').value = bedTemp;
+                if (filamentGramms > 0) document.getElementById('print-weight').value = filamentGramms;
+                
+                // Se abbiamo trovato punti G-code, riduciamo l'array per performance
+                if (parsedGCodePoints.length > 1000) {
+                    let step = Math.floor(parsedGCodePoints.length / 1000);
+                    parsedGCodePoints = parsedGCodePoints.filter((_, idx) => idx % step === 0);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function requestNotificationPermission() {
+            if (!("Notification" in window)) return alert("Notifiche non supportate.");
+            Notification.requestPermission().then(permission => {
+                const btnLbl = document.getElementById('notif-label');
+                if (permission === "granted") {
+                    btnLbl.innerText = "Notifiche Attive ✓";
+                    new Notification("3D Print Manager", { body: "Notifiche attivate con successo!" });
+                } else {
+                    btnLbl.innerText = "Notifiche Negate";
+                }
+            });
+        }
+
+        function triggerAppNotification(title, message) {
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification(title, { body: message });
+            }
+        }
+
+        function openChangelogModal() { document.getElementById('changelog-modal').classList.remove('hidden'); }
+        function openInventoryModal(type) {
+            document.getElementById('inv-type').value = type;
+            document.getElementById('inv-modal-title').innerText = type === 'filament' ? 'Aggiungi Filamento' : 'Aggiungi Accessorio';
+            document.getElementById('filament-fields').style.display = type === 'filament' ? 'block' : 'none';
+            document.getElementById('inventory-form').reset();
+            if(type === 'filament') { document.getElementById('inv-material').value = 'PLA'; onMaterialPresetChange(); }
+            document.getElementById('inventory-modal').classList.remove('hidden');
+        }
+        function openMaintenanceModal() { document.getElementById('maintenance-form').reset(); document.getElementById('maintenance-modal').classList.remove('hidden'); }
+        function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
+
+        function onMaterialPresetChange() {
+            const mat = document.getElementById('inv-material').value;
+            const preset = materialPresets[mat];
+            if(preset) {
+                document.getElementById('inv-nozzle').value = preset.nozzle;
+                document.getElementById('inv-bed').value = preset.bed;
+                document.getElementById('inv-fan').value = preset.fan;
+            }
+        }
+
+        function updatePrintFilamentDropdown() {
+            const select = document.getElementById('print-filament');
+            select.innerHTML = '<option value="">-- Seleziona Bobina (Opzionale) --</option>';
+            appData.inventory.filter(item => item.type === 'filament').forEach(f => {
+                select.innerHTML += `<option value="${f.id}">${f.name} (${f.weight}g rimasti)</option>`;
+            });
+        }
+
+        function autofillPrintTemps() {
+            const filamentId = document.getElementById('print-filament').value;
+            if(!filamentId) return;
+            const filament = appData.inventory.find(f => f.id == filamentId);
+            if(filament) {
+                document.getElementById('print-nozzle').value = filament.nozzle || 210;
+                document.getElementById('print-bed').value = filament.bed || 60;
+                document.getElementById('print-fan').value = filament.fan || 100;
+            }
+        }
+
+        function startPrint(event) {
+            event.preventDefault();
+            const model = document.getElementById('print-model').value;
+            const hours = parseInt(document.getElementById('print-hours').value) || 0;
+            const mins = parseInt(document.getElementById('print-minutes').value) || 0;
+            const filamentId = document.getElementById('print-filament').value;
+            const weightUsed = parseInt(document.getElementById('print-weight').value) || 0;
+            
+            const totalSeconds = (hours * 3600) + (mins * 60);
+            if(totalSeconds <= 0) return alert("Inserisci una durata valida.");
+
+            if(filamentId) {
+                const filament = appData.inventory.find(f => f.id == filamentId);
+                if(filament) filament.weight = Math.max(0, filament.weight - weightUsed);
+            }
+
+            const newPrint = {
+                id: Date.now(),
+                model,
+                endTime: Date.now() + (totalSeconds * 1000),
+                totalSeconds,
+                points: parsedGCodePoints.length > 0 ? [...parsedGCodePoints] : [],
+                reminders: [
+                    { timeOffset: Math.floor(totalSeconds * 0.2), text: "Controllo adesione primo strato", done: false, notified: false },
+                    { timeOffset: Math.floor(totalSeconds * 0.8), text: "Verifica fine bobina filamento", done: false, notified: false }
+                ]
+            };
+
+            appData.prints.push(newPrint);
+            saveData();
+            renderPrints();
+            renderInventory();
+            updateTotalHoursDisplay();
+            document.getElementById('print-form').reset();
+            document.getElementById('gcode-filename').innerText = "Legge automaticamente tempi, temperature e grammi";
+            parsedGCodePoints = [];
+            updatePrintFilamentDropdown();
+            triggerAppNotification("Stampa Avviata", `Il modello "${model}" è in esecuzione!`);
+        }
+
+        function saveInventoryItem(event) {
+            event.preventDefault();
+            const type = document.getElementById('inv-type').value;
+            const name = document.getElementById('inv-name').value;
+            let newItem = { id: Date.now(), type, name };
+            if(type === 'filament') {
+                newItem.material = document.getElementById('inv-material').value;
+                newItem.weight = parseInt(document.getElementById('inv-weight').value) || 1000;
+                newItem.maxWeight = newItem.weight;
+                newItem.nozzle = parseInt(document.getElementById('inv-nozzle').value) || 210;
+                newItem.bed = parseInt(document.getElementById('inv-bed').value) || 60;
+                newItem.fan = parseInt(document.getElementById('inv-fan').value) || 100;
+            }
+            appData.inventory.push(newItem);
+            saveData();
+            closeModal('inventory-modal');
+            renderInventory();
+            updatePrintFilamentDropdown();
+        }
+
+        function deleteInventoryItem(id) {
+            appData.inventory = appData.inventory.filter(i => i.id !== id);
+            saveData();
+            renderInventory();
+            updatePrintFilamentDropdown();
+        }
+
+        function saveMaintenanceItem(event) {
+            event.preventDefault();
+            appData.maintenance.push({ id: Date.now(), title: document.getElementById('maint-title').value, interval: document.getElementById('maint-interval').value, lastDone: 'Oggi', status: 'ok' });
+            saveData();
+            closeModal('maintenance-modal');
+            renderMaintenance();
+        }
+
+        function deleteMaintenanceItem(id) {
+            appData.maintenance = appData.maintenance.filter(m => m.id !== id);
+            saveData();
+            renderMaintenance();
+        }
+
+        function renderPrints() {
+            const container = document.getElementById('active-prints-container');
+            if(appData.prints.length === 0) {
+                container.innerHTML = `<div class="text-center py-12 text-slate-500 border-2 border-dashed border-dark-700 rounded-xl"><i class="fa-solid fa-print text-4xl mb-3 opacity-40"></i><p class="text-sm">Nessuna stampa in esecuzione al momento.</p></div>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            const now = Date.now();
+
+            appData.prints.forEach((p, index) => {
+                const timeLeft = Math.max(0, Math.floor((p.endTime - now) / 1000));
+                const elapsed = p.totalSeconds - timeLeft;
+                const progress = Math.min(100, Math.max(0, (elapsed / p.totalSeconds) * 100));
+
+                p.reminders.forEach(r => {
+                    if(!r.notified && elapsed >= r.timeOffset) {
+                        r.notified = true;
+                        triggerAppNotification("Promemoria Stampa 3D", `${p.model}: ${r.text}`);
+                    }
+                });
+
+                if(timeLeft === 0 && !p.completedNotified) {
+                    p.completedNotified = true;
+                    appData.totalPrintSeconds += p.totalSeconds;
+                    triggerAppNotification("Stampa Completata! 🎉", `Il modello "${p.model}" è pronto.`);
+                    saveData();
+                    updateTotalHoursDisplay();
+                }
+
+                const hrs = Math.floor(timeLeft / 3600);
+                const mins = Math.floor((timeLeft % 3600) / 60);
+                const secs = timeLeft % 60;
+
+                let remindersHtml = p.reminders.map((r, idx) => `
+                    <div class="flex items-center space-x-2 text-xs bg-dark-900 p-2 rounded-lg border border-dark-700">
+                        <input type="checkbox" ${r.done ? 'checked' : ''} onchange="toggleReminder(${p.id}, ${idx})" class="rounded bg-dark-800 border-dark-600 text-accent-500">
+                        <span class="${r.done ? 'line-through text-slate-500' : 'text-slate-300'}">${r.text}</span>
+                    </div>
+                `).join('');
+
+                container.innerHTML += `
+                    <div class="bg-dark-900 border border-dark-700 rounded-xl p-5 space-y-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-bold text-base text-white">${p.model}</h3>
+                                <p class="text-xs text-slate-400">Tempo rimanente stimato</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xl font-mono font-bold text-accent-500">${hrs}h ${mins}m ${secs}s</span>
+                            </div>
+                        </div>
+                        <div class="w-full bg-dark-700 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-accent-500 h-2.5 rounded-full transition-all duration-500" style="width: ${progress}%"></div>
+                        </div>
+
+                        <!-- Canvas Anteprima Nozzle in Tempo Reale -->
+                        <div class="bg-dark-800 border border-dark-700 rounded-xl p-3 flex flex-col items-center">
+                            <p class="text-[10px] uppercase font-semibold text-slate-400 mb-2">Simulatore Tracciato 3D & Nozzle in Movimento</p>
+                            <canvas id="canvas-print-${p.id}" width="300" height="150" class="bg-dark-900 rounded-lg border border-dark-700 w-full max-w-md"></canvas>
+                        </div>
+
+                        <div class="space-y-2">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Promemoria Temperatura & Ventola</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">${remindersHtml}</div>
+                        </div>
+                        <div class="flex justify-end pt-2 border-t border-dark-700/50">
+                            <button onclick="cancelPrint(${p.id})" class="text-rose-400 hover:text-rose-300 text-xs font-medium flex items-center space-x-1">
+                                <i class="fa-solid fa-trash"></i><span>Elimina / Termina Stampa</span>
+                            </button>
+                        </div>
+                    </div>`;
+
+                // Disegna animazione sul canvas dopo il rendering nel DOM
+                setTimeout(() => drawPrintCanvas(p, progress), 50);
+            });
+        }
+
+        // Funzione di disegno canvas per simulare il nozzle e la forma in trasparenza
+        function drawPrintCanvas(printObj, progressPct) {
+            const canvas = document.getElementById(`canvas-print-${printObj.id}`);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sfondo griglia stampante
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+            if (printObj.points && printObj.points.length > 0) {
+                // Trova min/max per scalare i punti sul canvas
+                let minX = Math.min(...printObj.points.map(p => p.x));
+                let maxX = Math.max(...printObj.points.map(p => p.x));
+                let minY = Math.min(...printObj.points.map(p => p.y));
+                let maxY = Math.max(...printObj.points.map(p => p.y));
+
+                let rangeX = maxX - minX || 1;
+                let rangeY = maxY - minY || 1;
+
+                // Disegna wireframe in trasparenza
+                ctx.strokeStyle = 'rgba(14, 165, 233, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                printObj.points.forEach((pt, idx) => {
+                    let cx = 20 + ((pt.x - minX) / rangeX) * (canvas.width - 40);
+                    let cy = (canvas.height - 20) - ((pt.y - minY) / rangeY) * (canvas.height - 40);
+                    if (idx === 0) ctx.moveTo(cx, cy);
+                    else ctx.lineTo(cx, cy);
+                });
+                ctx.stroke();
+
+                // Calcola posizione corrente del Nozzle in base all'avanzamento percentuale
+                let currentIndex = Math.floor((printObj.points.length - 1) * (progressPct / 100));
+                let currentPt = printObj.points[currentIndex] || printObj.points[0];
+
+                let nozzleX = 20 + ((currentPt.x - minX) / rangeX) * (canvas.width - 40);
+                let nozzleY = (canvas.height - 20) - ((currentPt.y - minY) / rangeY) * (canvas.height - 40);
+
+                // Disegna Nozzle animato (Punto luminoso)
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(nozzleX, nozzleY, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(nozzleX, nozzleY, 8, 0, Math.PI * 2);
+                ctx.stroke();
+            } else {
+                // Se non ci sono coordinate G-code caricate, mostra una forma dimostrativa wireframe
+                ctx.strokeStyle = 'rgba(14, 165, 233, 0.4)';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(80, 45, 140, 60);
+
+                let animX = 80 + (140 * (progressPct / 100));
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(animX, 75, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function toggleReminder(printId, remIdx) {
+            const print = appData.prints.find(p => p.id === printId);
+            if(print) { print.reminders[remIdx].done = !print.reminders[remIdx].done; saveData(); renderPrints(); }
+        }
+
+        function cancelPrint(id) {
+            appData.prints = appData.prints.filter(p => p.id !== id);
+            saveData();
+            renderPrints();
+        }
+
+        function renderInventory() {
+            const grid = document.getElementById('inventory-grid');
+            grid.innerHTML = '';
+            appData.inventory.forEach(item => {
+                if(item.type === 'filament') {
+                    const pct = Math.max(0, Math.min(100, (item.weight / item.maxWeight) * 100));
+                    grid.innerHTML += `
+                        <div class="bg-dark-800 border border-dark-700 rounded-2xl p-5 space-y-4 shadow-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-2">
+                                    <span class="bg-accent-500/10 text-accent-500 text-xs font-bold px-2.5 py-1 rounded-lg border border-accent-500/20">${item.material}</span>
+                                    <button onclick="deleteInventoryItem(${item.id})" class="text-slate-500 hover:text-rose-400 transition"><i class="fa-solid fa-trash text-sm"></i></button>
+                                </div>
+                                <h3 class="font-bold text-white text-base">${item.name}</h3>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-xs text-slate-400">
+                                    <span>Residuo: <strong class="text-white">${item.weight}g</strong></span>
+                                    <span>${pct.toFixed(0)}%</span>
+                                </div>
+                                <div class="w-full bg-dark-900 h-2 rounded-full overflow-hidden border border-dark-700">
+                                    <div class="bg-accent-500 h-full rounded-full" style="width: ${pct}%"></div>
+                                </div>
+                                <div class="grid grid-cols-3 gap-2 pt-2 text-center text-xs bg-dark-900 p-2 rounded-xl border border-dark-700 text-slate-300">
+                                    <div>Nozzle: <strong>${item.nozzle}°C</strong></div>
+                                    <div>Bed: <strong>${item.bed}°C</strong></div>
+                                    <div>Fan: <strong>${item.fan}%</strong></div>
+                                </div>
+                            </div>
+                        </div>`;
+                } else {
+                    grid.innerHTML += `
+                        <div class="bg-dark-800 border border-dark-700 rounded-2xl p-5 space-y-4 shadow-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-2">
+                                    <span class="bg-purple-500/10 text-purple-400 text-xs font-bold px-2.5 py-1 rounded-lg border border-purple-500/20">Accessorio</span>
+                                    <button onclick="deleteInventoryItem(${item.id})" class="text-slate-500 hover:text-rose-400 transition"><i class="fa-solid fa-trash text-sm"></i></button>
+                                </div>
+                                <h3 class="font-bold text-white text-base">${item.name}</h3>
+                            </div>
+                            <p class="text-xs text-slate-400">Disponibile in laboratorio</p>
+                        </div>`;
+                }
+            });
+        }
+
+        function renderDeals() {
+            const grid = document.getElementById('deals-grid');
+            grid.innerHTML = '';
+            dailyDeals.forEach(d => {
+                grid.innerHTML += `
+                    <div class="bg-dark-800 border border-dark-700 rounded-2xl p-5 space-y-4 shadow-xl flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="bg-amber-500/10 text-amber-400 text-xs font-bold px-2.5 py-1 rounded-lg border border-amber-500/20">${d.tag}</span>
+                                <span class="text-xs text-slate-400">${d.store}</span>
+                            </div>
+                            <h3 class="font-bold text-white text-base">${d.brand} - ${d.material}</h3>
+                        </div>
+                        <div class="flex items-center justify-between pt-2 border-t border-dark-700">
+                            <div>
+                                <span class="text-lg font-bold text-emerald-400">${d.price}</span>
+                                <span class="text-xs text-slate-500 line-through ml-2">${d.oldPrice}</span>
+                            </div>
+                            <a href="${d.link}" target="_blank" rel="noopener noreferrer" class="bg-accent-500 hover:bg-accent-600 text-dark-900 font-bold px-4 py-2 rounded-xl text-xs transition shadow-lg shadow-accent-500/20 flex items-center space-x-1">
+                                <span>Vai all'Offerta</span><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                            </a>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function refreshDeals() {
+            renderDeals();
+            alert("Elenco offerte sincronizzato con i negozi partner.");
+        }
+
+        function renderMaintenance() {
+            const tbody = document.getElementById('maintenance-table-body');
+            tbody.innerHTML = '';
+            appData.maintenance.forEach(m => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-dark-700/30 transition">
+                        <td class="p-4 font-medium text-white">${m.title}</td>
+                        <td class="p-4 text-slate-400">${m.interval}</td>
+                        <td class="p-4 text-slate-400">${m.lastDone}</td>
+                        <td class="p-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold ${m.status === 'ok' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">${m.status === 'ok' ? 'Regolare' : 'In Scadenza'}</span></td>
+                        <td class="p-4 text-right"><button onclick="deleteMaintenanceItem(${m.id})" class="text-slate-500 hover:text-rose-400 transition p-1"><i class="fa-solid fa-trash"></i></button></td>
+                    </tr>`;
+            });
+        }
+
+        function updateTotalHoursDisplay() {
+            const totalSec = appData.totalPrintSeconds || 0;
+            const hours = (totalSec / 3600).toFixed(1);
+            document.getElementById('total-print-hours').innerText = `${hours}h`;
+        }
+
+        setInterval(() => {
+            if(appData.prints.length > 0) renderPrints();
+        }, 1000);
+
+        renderPrints();
+        renderInventory();
+        renderMaintenance();
+        updateTotalHoursDisplay();
+        updatePrintFilamentDropdown();
+    </script>
+</body>
+</html>
